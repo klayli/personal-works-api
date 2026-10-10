@@ -3,7 +3,6 @@
 
 ## 文档结构
 - `/spec/personal-works-style-spec.md`：核心风格定义 + 完整作品集（原文+修订版）
-- `/works/`：单篇作品独立存储，按标题分类
 - `/api/works.json`：结构化JSON格式作品集，适配程序调用
 
 ## 创作风格
