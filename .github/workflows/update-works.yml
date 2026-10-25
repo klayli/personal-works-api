@@ -1,197 +1,53 @@
-name: Update Works
+- name: Update api/works.json
+  run: |
+    python3 - <<'PY'
+    import json, sys, os
 
-on:
-  workflow_dispatch:
-    inputs:
-      work_title:
-        description: "作品标题"
-        required: true
-        default: "夜归"
-      work_subtitle:
-        description: "副标题"
-        required: true
-        default: "丙午秋合肥有感"
-      work_theme:
-        description: "主题"
-        required: true
-        default: "夜归旧巷，今昔对照，少年壮志与中年落空"
-      work_core_images:
-        description: "核心意象，逗号分隔"
-        required: true
-        default: "旧巷,灯火,空亭台,浮云,满城埃"
-      work_genre:
-        description: "体裁"
-        required: true
-        default: "七言古风"
-      work_text:
-        description: "正文，行与行之间用换行分隔"
-        required: true
-        default: "昔时好景寻常在，旧巷游子夜归来。十里灯火繁华处，孤身枯坐空亭台。少时自有凌云志，曾许人间第一才。浮云过尽天如水，功名散作满城埃。"
-      work_note:
-        description: "说明"
-        required: false
-        default: "原文已定稿，未作文字修订。副标题原为“一一二六年秋合肥有感”，建议统一为“丙午秋合肥有感”。"
-      changelog_section:
-        description: "更新日志章节标题"
-        required: false
-        default: "新增作品《夜归》"
+    title = os.environ["TITLE"]
+    subtitle = os.environ["SUBTITLE"]
+    theme = os.environ["THEME"]
+    genre = os.environ["GENRE"]
+    note = os.environ["NOTE"]
+    images_json = os.environ["IMAGES_JSON"]
+    original_text = os.environ["ORIGINAL_TEXT"]
 
-permissions:
-  contents: write
+    path = "api/works.json"
 
-jobs:
-  update:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-      - name: Prepare inputs
-        id: vars
-        run: |
-          TITLE="${{ github.event.inputs.work_title }}"
-          SUBTITLE="${{ github.event.inputs.work_subtitle }}"
-          THEME="${{ github.event.inputs.work_theme }}"
-          GENRE="${{ github.event.inputs.work_genre }}"
-          NOTE="${{ github.event.inputs.work_note }}"
-          TEXT="${{ github.event.inputs.work_text }}"
+    new_item = {
+        "title": title,
+        "subtitle": subtitle,
+        "theme": theme,
+        "core_images": json.loads(images_json),
+        "genre": genre,
+        "original_text": original_text,
+        "revised_text": original_text,
+        "note": note
+    }
 
-          IMAGES_RAW="${{ github.event.inputs.work_core_images }}"
-          IMAGES_JSON=$(echo "$IMAGES_RAW" | awk -F',' '{
-            out="["
-            for(i=1;i<=NF;i++){
-              gsub(/^[ \t]+|[ \t]+$/,"",$i)
-              if($i=="") continue
-              if(out!="[") out=out","
-              out=out"\"" $i "\""
-            }
-            print out"]"
-          }')
+    if isinstance(data, dict):
+        works = data.get("works_list") or data.get("works")
+        if isinstance(works, list):
+            works.append(new_item)
+        else:
+            data["works_list"] = [new_item]
+    elif isinstance(data, list):
+        data.append(new_item)
+    else:
+        print("works.json 结构未知，无法更新")
+        sys.exit(1)
 
-          ORIGINAL_TEXT=$(echo "$TEXT" | sed 's/[[:space:]]*$//')
-          ORIGINAL_TEXT_ESCAPED=$(echo "$ORIGINAL_TEXT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
-
-          MARKDOWN_BLOCK=$(cat <<EOF
-          ## ${TITLE}
-
-          **主题：** ${THEME}
-          **核心意象：** $(echo "$IMAGES_RAW" | sed 's/,/、/g')
-          **体裁：** ${GENRE}
-          **落款：** ${SUBTITLE}
-
-          **原文：**
-
-          > $(echo "$ORIGINAL_TEXT" | sed 's/^/> /')
-
-          **修订版：**
-
-          > $(echo "$ORIGINAL_TEXT" | sed 's/^/> /')
-
-          **说明：** ${NOTE}
-          EOF
-          )
-
-          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
-          echo "subtitle=${SUBTITLE}" >> "$GITHUB_OUTPUT"
-          echo "theme=${THEME}" >> "$GITHUB_OUTPUT"
-          echo "genre=${GENRE}" >> "$GITHUB_OUTPUT"
-          echo "note=${NOTE}" >> "$GITHUB_OUTPUT"
-          echo "images_json=${IMAGES_JSON}" >> "$GITHUB_OUTPUT"
-          echo "original_text_escaped=${ORIGINAL_TEXT_ESCAPED}" >> "$GITHUB_OUTPUT"
-          echo "markdown_block<<MARKDOWN_EOF" >> "$GITHUB_OUTPUT"
-          echo "${MARKDOWN_BLOCK}" >> "$GITHUB_OUTPUT"
-          echo "MARKDOWN_EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Update api/works.json
-        run: |
-          python3 - <<'PY'
-          import json, sys, os
-
-          title = os.environ["TITLE"]
-          subtitle = os.environ["SUBTITLE"]
-          theme = os.environ["THEME"]
-          genre = os.environ["GENRE"]
-          note = os.environ["NOTE"]
-          images_json = os.environ["IMAGES_JSON"]
-          original_text = os.environ["ORIGINAL_TEXT"]
-
-          path = "api/works.json"
-
-          with open(path, "r", encoding="utf-8") as f:
-              data = json.load(f)
-
-          works = data.get("works")
-          if not isinstance(works, list):
-              print("works 不是数组，跳过更新")
-              sys.exit(1)
-
-          new_item = {
-              "title": title,
-              "subtitle": subtitle,
-              "theme": theme,
-              "core_images": json.loads(images_json),
-              "genre": genre,
-              "original_text": original_text,
-              "revised_text": original_text,
-              "note": note
-          }
-
-          works.append(new_item)
-
-          with open(path, "w", encoding="utf-8") as f:
-              json.dump(data, f, ensure_ascii=False, indent=2)
-              f.write("\n")
-          PY
-        env:
-          TITLE: ${{ steps.vars.outputs.title }}
-          SUBTITLE: ${{ steps.vars.outputs.subtitle }}
-          THEME: ${{ steps.vars.outputs.theme }}
-          GENRE: ${{ steps.vars.outputs.genre }}
-          NOTE: ${{ steps.vars.outputs.note }}
-          IMAGES_JSON: ${{ steps.vars.outputs.images_json }}
-          ORIGINAL_TEXT: ${{ steps.vars.outputs.original_text_escaped }}
-
-      - name: Update personal-works-style-spec.md
-        run: |
-          BLOCK="${{ steps.vars.outputs.markdown_block }}"
-          FILE="personal-works-style-spec.md"
-
-          if [ -f "$FILE" ]; then
-            printf "\n%s\n" "$BLOCK" >> "$FILE"
-          else
-            printf "%s\n" "$BLOCK" > "$FILE"
-          fi
-
-      - name: Update CHANGELOG.md
-        run: |
-          SECTION="${{ github.event.inputs.changelog_section }}"
-          FILE="CHANGELOG.md"
-          TODAY=$(date +%Y-%m-%d)
-
-          ENTRY="## ${SECTION} - ${TODAY}
-
-          - 新增作品《${{ github.event.inputs.work_title }}》
-          - 更新 api/works.json
-          - 更新 personal-works-style-spec.md
-          "
-
-          if [ -f "$FILE" ]; then
-            {
-              echo "$ENTRY"
-              cat "$FILE"
-            } > "${FILE}.tmp"
-            mv "${FILE}.tmp" "$FILE"
-          else
-            echo "# Changelog" > "$FILE"
-            echo "" >> "$FILE"
-            echo "$ENTRY" >> "$FILE"
-          fi
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: 新增作品《${{ github.event.inputs.work_title }}》"
-            git push
-          fi
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    PY
+  env:
+    TITLE: ${{ steps.vars.outputs.title }}
+    SUBTITLE: ${{ steps.vars.outputs.subtitle }}
+    THEME: ${{ steps.vars.outputs.theme }}
+    GENRE: ${{ steps.vars.outputs.genre }}
+    NOTE: ${{ steps.vars.outputs.note }}
+    IMAGES_JSON: ${{ steps.vars.outputs.images_json }}
+    ORIGINAL_TEXT: ${{ steps.vars.outputs.original_text_escaped }}
