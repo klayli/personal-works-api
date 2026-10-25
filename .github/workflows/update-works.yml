@@ -1,0 +1,43 @@
+# .github/workflows/update-works.yml
+name: Update Works
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec_content:
+        required: false
+        type: string
+      json_content:
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_CONTENT }}
+
+      - name: Update spec file
+        if: ${{ github.event.inputs.spec_content != '' }}
+        run: |
+          echo '${{ github.event.inputs.spec_content }}' > personal-works-style-spec.md
+
+      - name: Update JSON file
+        if: ${{ github.event.inputs.json_content != '' }}
+        run: |
+          echo '${{ github.event.inputs.json_content }}' > api/works.json
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: 更新作品集"
+            git push
+          fi
