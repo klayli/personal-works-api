@@ -1,53 +1,112 @@
-- name: Update api/works.json
-  run: |
-    python3 - <<'PY'
-    import json, sys, os
+name: Update works
 
-    title = os.environ["TITLE"]
-    subtitle = os.environ["SUBTITLE"]
-    theme = os.environ["THEME"]
-    genre = os.environ["GENRE"]
-    note = os.environ["NOTE"]
-    images_json = os.environ["IMAGES_JSON"]
-    original_text = os.environ["ORIGINAL_TEXT"]
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        required: true
+        type: string
+      subtitle:
+        required: false
+        type: string
+      theme:
+        required: true
+        type: string
+      genre:
+        required: true
+        type: string
+      note:
+        required: false
+        type: string
+      images_json:
+        required: true
+        type: string
+      original_text:
+        required: true
+        type: string
 
-    path = "api/works.json"
+permissions:
+  contents: write
 
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_CONTENT }}
 
-    new_item = {
-        "title": title,
-        "subtitle": subtitle,
-        "theme": theme,
-        "core_images": json.loads(images_json),
-        "genre": genre,
-        "original_text": original_text,
-        "revised_text": original_text,
-        "note": note
-    }
+      - name: Prepare inputs
+        id: vars
+        run: |
+          echo "title=${{ github.event.inputs.title }}" >> $GITHUB_OUTPUT
+          echo "subtitle=${{ github.event.inputs.subtitle }}" >> $GITHUB_OUTPUT
+          echo "theme=${{ github.event.inputs.theme }}" >> $GITHUB_OUTPUT
+          echo "genre=${{ github.event.inputs.genre }}" >> $GITHUB_OUTPUT
+          echo "note=${{ github.event.inputs.note }}" >> $GITHUB_OUTPUT
+          echo "images_json=${{ github.event.inputs.images_json }}" >> $GITHUB_OUTPUT
+          # 转义换行，避免多行 env 破坏 YAML
+          escaped=$(echo "${{ github.event.inputs.original_text }}" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read())[1:-1])")
+          echo "original_text_escaped=$escaped" >> $GITHUB_OUTPUT
 
-    if isinstance(data, dict):
-        works = data.get("works_list") or data.get("works")
-        if isinstance(works, list):
-            works.append(new_item)
-        else:
-            data["works_list"] = [new_item]
-    elif isinstance(data, list):
-        data.append(new_item)
-    else:
-        print("works.json 结构未知，无法更新")
-        sys.exit(1)
+      - name: Update api/works.json
+        run: |
+          python3 - <<'PY'
+          import json, sys, os
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    PY
-  env:
-    TITLE: ${{ steps.vars.outputs.title }}
-    SUBTITLE: ${{ steps.vars.outputs.subtitle }}
-    THEME: ${{ steps.vars.outputs.theme }}
-    GENRE: ${{ steps.vars.outputs.genre }}
-    NOTE: ${{ steps.vars.outputs.note }}
-    IMAGES_JSON: ${{ steps.vars.outputs.images_json }}
-    ORIGINAL_TEXT: ${{ steps.vars.outputs.original_text_escaped }}
+          title = os.environ["TITLE"]
+          subtitle = os.environ["SUBTITLE"]
+          theme = os.environ["THEME"]
+          genre = os.environ["GENRE"]
+          note = os.environ["NOTE"]
+          images_json = os.environ["IMAGES_JSON"]
+          original_text = os.environ["ORIGINAL_TEXT"]
+
+          path = "api/works.json"
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          new_item = {
+              "title": title,
+              "subtitle": subtitle,
+              "theme": theme,
+              "core_images": json.loads(images_json),
+              "genre": genre,
+              "original_text": original_text,
+              "revised_text": original_text,
+              "note": note
+          }
+
+          if isinstance(data, dict):
+              works = data.get("works_list") or data.get("works")
+              if isinstance(works, list):
+                  works.append(new_item)
+              else:
+                  data["works_list"] = [new_item]
+          elif isinstance(data, list):
+              data.append(new_item)
+          else:
+              print("works.json 结构未知，无法更新")
+              sys.exit(1)
+
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+        env:
+          TITLE: ${{ steps.vars.outputs.title }}
+          SUBTITLE: ${{ steps.vars.outputs.subtitle }}
+          THEME: ${{ steps.vars.outputs.theme }}
+          GENRE: ${{ steps.vars.outputs.theme }}
+          NOTE: ${{ steps.vars.outputs.note }}
+          IMAGES_JSON: ${{ steps.vars.outputs.images_json }}
+          ORIGINAL_TEXT: ${{ steps.vars.outputs.original_text_escaped }}
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api/works.json
+          git commit -m "chore: add work ${{ github.event.inputs.title }}" || exit 0
+          git push
